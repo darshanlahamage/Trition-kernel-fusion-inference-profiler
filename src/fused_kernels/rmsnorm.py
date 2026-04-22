@@ -34,13 +34,15 @@ def _rmsnorm_fwd(
     tl.store(Y_row_ptr + cols, y.to(tl.float16), mask=mask)
 
 def triton_rmsnorm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    M_ROWS, N_COLS = x.shape
-    y = torch.empty_like(x)
+    original_shape = x.shape
+    x_2d = x.view(-1, original_shape[-1])
+    M_ROWS, N_COLS = x_2d.shape
+    y_2d = torch.empty_like(x_2d)
     BLOCK_SIZE = triton.next_power_of_2(N_COLS)
     
     grid = lambda META: (M_ROWS,)
     _rmsnorm_fwd[grid](
-        x, y, weight, x.stride(0), y.stride(0),
+        x_2d, y_2d, weight, x_2d.stride(0), y_2d.stride(0),
         N_COLS, eps, BLOCK_SIZE=BLOCK_SIZE
     )
-    return y
+    return y_2d.view(original_shape)

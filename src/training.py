@@ -6,6 +6,7 @@ from llama_block import CustomLlamaBlock
 
 class TinyLlama(nn.Module):
     def __init__(self, vocab_size, hidden_dim, num_heads, num_layers, max_seq_length):
+        super().__init__()
         self.embed = nn.Embedding(vocab_size, hidden_dim)
 
         self.layers = nn.ModuleList([
@@ -23,6 +24,16 @@ class TinyLlama(nn.Module):
         seq = torch.arange(seq_length).float()
         freqs = torch.outer(seq, theta)
         return torch.cos(freqs).to(torch.float16), torch.sin(freqs).to(torch.float16)
+        
+    def forward(self, x):
+        B, S = x.shape
+        x = self.embed(x)
+        cos, sin = self.cos_cached[:S], self.sin_cached[:S]
+        for layer in self.layers:
+            x = layer(x, cos, sin)
+        x = self.norm(x)
+        logits = self.lm_head(x)
+        return logits
     
 def train():
 
@@ -61,7 +72,7 @@ def train():
 
     total_tokens_per_step = BATCH_SIZE * SEQ_LEN
 
-    for step in STEPS:
+    for step in range(STEPS):
         x, y = get_batch()
 
         torch.cuda.reset_peak_memory_stats()
@@ -70,7 +81,7 @@ def train():
         logits = model(x)
         loss = loss_fn(logits.view(-1, VOCAB_SIZE), y.view(-1))
 
-        loss.bakward()
+        loss.backward()
 
         optimizer.step()
         optimizer.zero_grad()
