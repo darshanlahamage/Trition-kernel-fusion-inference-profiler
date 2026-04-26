@@ -8,7 +8,7 @@ import triton.language as tl
         triton.Config({'BLOCK_S': 64}, num_warps=4),
         triton.Config({'BLOCK_S': 128}, num_warps=4),
     ],
-    key=['seq_len']
+    key=[]
 )
 @triton.jit
 def _rope_fwd_2d(

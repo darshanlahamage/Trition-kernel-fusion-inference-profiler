@@ -83,21 +83,28 @@ def benchmark():
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     
-    # Run torch.profiler
-    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-        start_event.record()
-        for _ in range(GENERATE_LEN):
-            logits, kv_cache = triton_model(next_token, kv_cache=kv_cache)
-            next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
-        end_event.record()
-        torch.cuda.synchronize()
-
-    prof.export_chrome_trace("trace.json")
-    print("      Exported execution trace to 'trace.json'")
+    # Measure Pure Throughput (No Profiler)
+    start_event.record()
+    for _ in range(GENERATE_LEN):
+        logits, kv_cache = triton_model(next_token, kv_cache=kv_cache)
+        next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
+    end_event.record()
+    torch.cuda.synchronize()
     
     triton_time_s = start_event.elapsed_time(end_event) / 1000.0
     results_tps["Triton\n(KV-Cache)"] = (BATCH_SIZE * GENERATE_LEN) / triton_time_s
     results_vram["Triton\n(KV-Cache)"] = torch.cuda.max_memory_allocated() / (1024 ** 2)
+
+    # Collect Nsight Trace (Separate to avoid skewing metrics)
+    print("      Collecting Nsight Trace...")
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+        for _ in range(5):
+            logits, kv_cache = triton_model(next_token, kv_cache=kv_cache)
+            next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
+        torch.cuda.synchronize()
+
+    prof.export_chrome_trace("trace.json")
+    print("      Exported execution trace to 'trace.json'")
 
     # ---------------------------------------------------------
     # 2. PyTorch Optimized (Native SDPA FlashAttention + KV Cache)

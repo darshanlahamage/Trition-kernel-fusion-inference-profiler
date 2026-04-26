@@ -8,7 +8,7 @@ import triton.language as tl
         triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64}, num_warps=4, num_stages=1),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64}, num_warps=4, num_stages=1),
     ],
-    key=['seq_len_q', 'seq_len_kv', 'head_dim']
+    key=['head_dim']
 )
 @triton.jit
 def _fwd_kernel(
