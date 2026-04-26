@@ -6,16 +6,19 @@ import torch.nn.functional as F
 def apply_rotary_emb_torch(xq, xk, cos, sin, start_pos):
     B, H, S, D = xq.shape
     
-    cos = cos[start_pos:start_pos+S].view(1, 1, S, -1)
-    sin = sin[start_pos:start_pos+S].view(1, 1, S, -1)
+    cos_slice = cos[start_pos:start_pos+S]
+    sin_slice = sin[start_pos:start_pos+S]
+    
+    cos_b = torch.cat([cos_slice, cos_slice], dim=-1).view(1, 1, S, D)
+    sin_b = torch.cat([sin_slice, sin_slice], dim=-1).view(1, 1, S, D)
     
     def rotate_half(x):
         x1 = x[..., : D // 2]
         x2 = x[..., D // 2 :]
         return torch.cat((-x2, x1), dim=-1)
     
-    xq_out = (xq * cos) + (rotate_half(xq) * sin)
-    xk_out = (xk * cos) + (rotate_half(xk) * sin)
+    xq_out = (xq * cos_b) + (rotate_half(xq) * sin_b)
+    xk_out = (xk * cos_b) + (rotate_half(xk) * sin_b)
     
     return xq_out, xk_out
 
