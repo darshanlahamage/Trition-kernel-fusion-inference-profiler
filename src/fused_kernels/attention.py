@@ -34,15 +34,15 @@ def _fwd_kernel(
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, head_dim], dtype=tl.float32)
 
-    q = tl.load(q_ptrs, mask=(offs_m[:, None] < seq_len_q) & (offs_d[None, :] < head_dim), other=0.0)
+    q = tl.load(q_ptrs, mask=(offs_m[:, None] < seq_len_q) & (offs_d[None, :] < head_dim), other=0.0).to(tl.float16)
 
     for start_n in range(0, seq_len_kv, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_ptrs = K + (batch_idx * stride_kb + head_idx * stride_kh + (start_n + offs_n[None, :]) * stride_kn + offs_d[:, None] * stride_kd)
         v_ptrs = V + (batch_idx * stride_vb + head_idx * stride_vh + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vd)
 
-        k = tl.load(k_ptrs, mask=((start_n + offs_n[None, :]) < seq_len_kv) & (offs_d[:, None] < head_dim), other=0.0)
-        v = tl.load(v_ptrs, mask=((start_n + offs_n[:, None]) < seq_len_kv) & (offs_d[None, :] < head_dim), other=0.0)
+        k = tl.load(k_ptrs, mask=((start_n + offs_n[None, :]) < seq_len_kv) & (offs_d[:, None] < head_dim), other=0.0).to(tl.float16)
+        v = tl.load(v_ptrs, mask=((start_n + offs_n[:, None]) < seq_len_kv) & (offs_d[None, :] < head_dim), other=0.0).to(tl.float16)
 
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, k) * sm_scale
