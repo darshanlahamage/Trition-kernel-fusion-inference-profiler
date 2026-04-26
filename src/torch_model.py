@@ -30,9 +30,7 @@ class TorchLlamaBlock(nn.Module):
         self.head_dim = hidden_dim // num_heads
         self.eps = eps
 
-        self.q_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.k_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.v_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.qkv_proj = nn.Linear(hidden_dim, hidden_dim * 3, bias=False)
         self.o_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
 
         self.attn_norm = nn.RMSNorm(hidden_dim, eps=eps)
@@ -49,9 +47,10 @@ class TorchLlamaBlock(nn.Module):
 
         x_norm = self.attn_norm(x)
 
-        q = self.q_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        qkv = self.qkv_proj(x_norm).view(B, S, 3, self.num_heads, self.head_dim)
+        q = qkv[:, :, 0, :, :].transpose(1, 2)
+        k = qkv[:, :, 1, :, :].transpose(1, 2)
+        v = qkv[:, :, 2, :, :].transpose(1, 2)
 
         start_pos = 0 if kv_cache is None else kv_cache[0].shape[2]
         q, k = apply_rotary_emb_torch(q, k, cos, sin, start_pos)
@@ -95,9 +94,7 @@ class TorchTinyLlama(nn.Module):
         
         scale = 1.0 / math.sqrt(2 * num_layers)
         for layer in self.layers:
-            nn.init.xavier_uniform_(layer.q_proj.weight)
-            nn.init.xavier_uniform_(layer.k_proj.weight)
-            nn.init.xavier_uniform_(layer.v_proj.weight)
+            nn.init.xavier_uniform_(layer.qkv_proj.weight)
             nn.init.xavier_uniform_(layer.o_proj.weight)
             layer.o_proj.weight.data.mul_(scale)
             nn.init.xavier_uniform_(layer.gate_proj.weight)

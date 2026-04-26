@@ -15,9 +15,7 @@ class CustomLlamaBlock(nn.Module):
         self.eps = eps
 
         # Attention Projections
-        self.q_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.k_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.v_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.qkv_proj = nn.Linear(hidden_dim, hidden_dim * 3, bias=False)
         self.o_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
 
         self.attn_norm_weight = nn.Parameter(torch.ones(hidden_dim))
@@ -36,9 +34,10 @@ class CustomLlamaBlock(nn.Module):
 
         x_norm = triton_rmsnorm(x, self.attn_norm_weight, self.eps)
 
-        q = self.q_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2) # [B, H, S, D]
-        k = self.k_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        qkv = self.qkv_proj(x_norm).view(B, S, 3, self.num_heads, self.head_dim)
+        q = qkv[:, :, 0, :, :].transpose(1, 2) # [B, H, S, D]
+        k = qkv[:, :, 1, :, :].transpose(1, 2)
+        v = qkv[:, :, 2, :, :].transpose(1, 2)
 
         start_pos = 0 if kv_cache is None else kv_cache[0].shape[2]
         

@@ -19,9 +19,7 @@ class TinyLlama(nn.Module):
         # Scale weights by 1/sqrt(2 * layers) for activation stability
         scale = 1.0 / math.sqrt(2 * num_layers)
         for layer in self.layers:
-            nn.init.xavier_uniform_(layer.q_proj.weight)
-            nn.init.xavier_uniform_(layer.k_proj.weight)
-            nn.init.xavier_uniform_(layer.v_proj.weight)
+            nn.init.xavier_uniform_(layer.qkv_proj.weight)
             nn.init.xavier_uniform_(layer.o_proj.weight)
             layer.o_proj.weight.data.mul_(scale)
             nn.init.xavier_uniform_(layer.gate_proj.weight)
