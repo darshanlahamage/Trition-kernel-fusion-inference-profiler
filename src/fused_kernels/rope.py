@@ -15,7 +15,7 @@ def _rope_fwd_2d(
     Q_ptr, Out_ptr, Cos_ptr, Sin_ptr,
     stride_qb, stride_qh, stride_qs, stride_qd,
     stride_ob, stride_oh, stride_os, stride_od,
-    stride_cs, stride_cd, seq_len,
+    stride_cs, stride_cd, seq_len, start_pos,
     BLOCK_S: tl.constexpr, HALF_D: tl.constexpr
 ):
     batch_idx = tl.program_id(0)
@@ -32,8 +32,11 @@ def _rope_fwd_2d(
 
     q1 = tl.load(q_base + offs_s[:, None] * stride_qs + offs_d1[None, :] * stride_qd, mask=mask_s[:, None], other=0.0).to(tl.float32)
     q2 = tl.load(q_base + offs_s[:, None] * stride_qs + offs_d2[None, :] * stride_qd, mask=mask_s[:, None], other=0.0).to(tl.float32)
-    cos = tl.load(Cos_ptr + offs_s[:, None] * stride_cs + offs_d1[None, :] * stride_cd, mask=mask_s[:, None], other=0.0).to(tl.float32)
-    sin = tl.load(Sin_ptr + offs_s[:, None] * stride_cs + offs_d1[None, :] * stride_cd, mask=mask_s[:, None], other=0.0).to(tl.float32)
+    
+    # Absolute positioning logic
+    offs_s_cos = offs_s + start_pos
+    cos = tl.load(Cos_ptr + offs_s_cos[:, None] * stride_cs + offs_d1[None, :] * stride_cd, mask=mask_s[:, None], other=0.0).to(tl.float32)
+    sin = tl.load(Sin_ptr + offs_s_cos[:, None] * stride_cs + offs_d1[None, :] * stride_cd, mask=mask_s[:, None], other=0.0).to(tl.float32)
 
     out1 = q1 * cos - q2 * sin
     out2 = q2 * cos + q1 * sin
@@ -41,7 +44,7 @@ def _rope_fwd_2d(
     tl.store(out_base + offs_s[:, None] * stride_os + offs_d1[None, :] * stride_od, out1.to(tl.float16), mask=mask_s[:, None])
     tl.store(out_base + offs_s[:, None] * stride_os + offs_d2[None, :] * stride_od, out2.to(tl.float16), mask=mask_s[:, None])
 
-def triton_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+def triton_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, start_pos: int = 0) -> torch.Tensor:
     out = torch.empty_like(q)
     B, H, S, D = out.shape
     grid = lambda META: (B, H, triton.cdiv(S, META['BLOCK_S']))
@@ -50,6 +53,6 @@ def triton_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.
         q, out, cos, sin,
         q.stride(0), q.stride(1), q.stride(2), q.stride(3),
         out.stride(0), out.stride(1), out.stride(2), out.stride(3),
-        cos.stride(0), cos.stride(1), S, HALF_D=D // 2
+        cos.stride(0), cos.stride(1), S, start_pos, HALF_D=D // 2
     )
     return out

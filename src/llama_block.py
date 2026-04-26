@@ -28,7 +28,7 @@ class CustomLlamaBlock(nn.Module):
         self.up_proj = nn.Linear(hidden_dim, hidden_mlp, bias=False)
         self.down_proj = nn.Linear(hidden_mlp, hidden_dim, bias=False)
 
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, kv_cache=None):
         B, S, D = x.shape
         sm_scale = 1.0 / (self.head_dim ** 0.5)
 
@@ -40,10 +40,19 @@ class CustomLlamaBlock(nn.Module):
         k = self.k_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
 
-        q = triton_rope(q, cos, sin)
-        k = triton_rope(k, cos, sin)
+        start_pos = 0 if kv_cache is None else kv_cache[0].shape[2]
+        
+        q = triton_rope(q, cos, sin, start_pos=start_pos)
+        k = triton_rope(k, cos, sin, start_pos=start_pos)
 
-        attn_out = CustomFlashAttention.apply(q, k, v, sm_scale)
+        if kv_cache is not None:
+            past_k, past_v = kv_cache
+            k = torch.cat([past_k, k], dim=2)
+            v = torch.cat([past_v, v], dim=2)
+
+        current_kv = (k, v)
+
+        attn_out = CustomFlashAttention.forward(q, k, v, sm_scale)
 
         # Reshape and Output Projection
         attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, D)
@@ -60,4 +69,4 @@ class CustomLlamaBlock(nn.Module):
 
         x = residual + mlp_out
 
-        return x
+        return x, current_kv
